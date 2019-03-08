@@ -24,6 +24,7 @@ MATCH_S3_PATH = 'matches'
 
 WARC_PATH_FILE = 'input/warc.paths'
 PROCESSED_WARC_PATHS = 'processed.paths'
+FAILED_WARC_PATHS = 'failed.paths'
 MAX_PATHS_PER_RUN = 250
 
 #
@@ -274,23 +275,62 @@ def record_processed_warc_path(warc_path):
         file(PROCESSED_WARC_PATHS, 'a').write('%s\n' % warc_path)
 
 
-def handle_result(result):
+def get_processed_warc_paths():
+    warc_paths = []
+
+    for line in file(PROCESSED_WARC_PATHS):
+        line = line.strip()
+        warc_paths.append(line)
+
+    return warc_paths
+
+
+def get_failed_warc_paths():
+    warc_paths = []
+
+    for line in file(FAILED_WARC_PATHS):
+        line = line.strip()
+        warc_paths.append(line)
+
+    return warc_paths
+
+
+def is_failed_warc_path(warc_path):
+    if not os.path.exists(FAILED_WARC_PATHS):
+        return False
+
+    for line in file(FAILED_WARC_PATHS):
+        line = line.strip()
+        if line == warc_path:
+            return True
+
+
+def record_failed_warc_path(warc_path):
+    if not is_failed_warc_path(warc_path):
+        file(FAILED_WARC_PATHS, 'a').write('%s\n' % warc_path)
+
+
+def handle_result(result, completed_warc_paths):
     warc_path, spent, processed_records, ignored_records, match_stats = result
 
-    record_processed_warc_path(warc_path)
+    if warc_path not in completed_warc_paths:
 
-    print('')
-    print(warc_path)
-    print('  - Time (seconds): %s' % spent)
-    print('  - Processed pages: %s' % processed_records)
-    print('  - Ignored pages: %s' % ignored_records)
-    print('  - Matches: %r' % match_stats)
-    print('')
+        completed_warc_paths.add(warc_path)
+        record_processed_warc_path(warc_path)
+
+        print('')
+        print(warc_path)
+        print('  - Time (seconds): %s' % spent)
+        print('  - Processed pages: %s' % processed_records)
+        print('  - Ignored pages: %s' % ignored_records)
+        print('  - Matches: %r' % match_stats)
+        print('')
 
 
-def handle_timeout(future):
-    print(dir(future))
-    print(future.__dict__)
+def handle_timeout(future, failed_warc_paths):
+    if future not in failed_warc_paths:
+        failed_warc_paths.add(future)
+        print('A future timed out!')
 
 
 def main():
@@ -298,8 +338,18 @@ def main():
     wren_exec = pywren.default_executor()
 
     all_warc_paths = get_warc_paths()
+    processed_warc_paths = get_processed_warc_paths()
+    failed_warc_paths = get_failed_warc_paths()
+
+    progress = float(len(processed_warc_paths) + len(failed_warc_paths)) / len(all_warc_paths)
+    print('Overall progress: %.2f%%' % (progress * 100,))
+
     pending_warc_paths = [wp for wp in all_warc_paths if not is_already_processed_warc_path(wp)]
+    pending_warc_paths = [wp for wp in pending_warc_paths if not is_failed_warc_path(wp)]
     pending_warc_paths = pending_warc_paths[:MAX_PATHS_PER_RUN]
+
+    completed_warc_paths = set()
+    failed_warc_paths = set()
 
     print('Going to process %s WARC paths' % len(pending_warc_paths))
 
@@ -313,9 +363,6 @@ def main():
     while incomplete_futures:
         completed_futures, incomplete_futures = pywren.wait(futures, return_when=pywren.ANY_COMPLETED)
 
-        if completed_futures:
-            print('Completed %s futures!' % len(completed_futures))
-
         for future in completed_futures:
             try:
                 result = future.result(storage_handler=wren_exec.storage)
@@ -325,9 +372,20 @@ def main():
                 current_exception_msg = str(e)
 
                 if run_out_of_time in current_exception_msg:
-                    handle_timeout(future)
+                    handle_timeout(future, failed_warc_paths)
             else:
-                handle_result(result)
+                handle_result(result, completed_warc_paths)
+
+    #
+    # The future object has no reference to the parameters :facepalm:
+    # so we have to find out which warc_paths failed by doing a set -
+    # between pending and completed
+    #
+    pending_warc_paths = set(pending_warc_paths)
+    failed_warc_paths = pending_warc_paths - completed_warc_paths
+
+    for failed_warc in failed_warc_paths:
+        record_failed_warc_path(failed_warc)
 
     spent = time.time() - start
     print('Spent %.2f wall clock seconds' % spent)

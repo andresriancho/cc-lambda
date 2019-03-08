@@ -110,3 +110,4 @@ output/
 src/
 venv/
 processed.paths
+failed.paths

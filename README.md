@@ -48,19 +48,23 @@ Change the following in `cc-lambda.py`:
 Application runs will spawn multiple lambda functions that analyze common crawl
 WARC files at scale. Running this function will have an impact on your AWS billing!
 
-The application reads the `input/warc.paths` file and writes the processed WARC
-paths to `processed.paths`. When calling `cc-lambda.py` the script will check if
-there are any WARC paths in the input which were not already processed, and go
-through those. Remove `processed.paths` if you want to re-process all WARC paths.
+The application reads the `input/warc.paths` file and writes to:
+
+ * `processed.paths`: text file containing the WARC paths that were successfully analyzed
+ * `failed.paths`: text file containing the WARC paths that failed (most likely because of a lambda timeout reached)
+
+When calling `cc-lambda.py` the script will check if there are any WARC paths
+in the input which were not already processed or failed, and go through those.
+Remove `processed.paths` and `failed.paths` if you want to re-process all WARC paths.
 
 HTTP responses that match the search are stored in the `MATCH_S3_BUCKET` S3 bucket.
 
 ```console
 $ python cc-lambda.py 
 No handlers could be found for logger "pywren.executor"
-Going to process 1 WARC paths
+Overall progress: 1.55%
+Going to process 250 WARC paths
 Got futures from map(), waiting for results...
-Completed 1 futures!
 
 crawl-data/CC-MAIN-2019-09/segments/1550247479101.30/warc/CC-MAIN-20190215183319-20190215205319-00000.warc.gz
   - Time (seconds): 191.205149174
