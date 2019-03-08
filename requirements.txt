@@ -5,8 +5,8 @@ warc
 warcio
 awscli
 
-#
--e git://github.com/pywren/pywren.git#egg=pywren
+# Various bug fixes that haven't been merged yet
+-e git://github.com/andresriancho/pywren.git#egg=pywren
 
 # Monitoring
 sentry_sdk
