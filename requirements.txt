@@ -1,0 +1,7 @@
+boto3
+requests
+warc
+warcio
+sentry_sdk
+awscli
+-e git://github.com/pywren/pywren.git#egg=pywren

@@ -60,6 +60,10 @@ HTTP responses that match the search are stored in the `MATCH_S3_BUCKET` S3 buck
 Remember: [AWS Lambda sends logs to CloudWatch](https://docs.aws.amazon.com/lambda/latest/dg/python-logging.html)
 and you can access the logs [here](https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logs:).
 
+```bash
+PYWREN_LOGLEVEL=INFO python cc-lambda.py
+```
+
 ### Costs
 
 As the Common Crawl dataset lives in the Amazon Public Datasets program, 
