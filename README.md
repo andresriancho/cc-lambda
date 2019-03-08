@@ -64,7 +64,7 @@ and you can access the logs [here](https://console.aws.amazon.com/cloudwatch/hom
 PYWREN_LOGLEVEL=INFO python cc-lambda.py
 ```
 
-### Costs
+## Costs
 
 As the Common Crawl dataset lives in the Amazon Public Datasets program, 
 you can access and process it without incurring any transfer costs. 
