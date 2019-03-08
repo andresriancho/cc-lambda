@@ -14,7 +14,6 @@ import codecs
 import boto3
 import pywren
 import sentry_sdk
-import stackimpact
 
 from warcio.archiveiterator import ArchiveIterator
 
@@ -229,11 +228,6 @@ def md5_hash(data):
 
 
 def process_warc_archive(warc_path):
-    stackimpact.start(
-        agent_key='8e00251719de0656785d791d682b2ce13f29a7f1',
-        app_name='CommonCrawlerLambda'
-    )
-
     sentry_sdk.init("https://1f99fe891d904df8b29db12358b72694@sentry.io/1409316")
 
     start = time.time()

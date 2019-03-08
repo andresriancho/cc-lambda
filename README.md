@@ -113,14 +113,14 @@ Total monthly cost estimation: $192.296
 
 ## Monitoring
 
-It is possible to monitor the progress of the analysis process using the following
-[CloudWatch Insights](https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logs-insights:)
-search. 
+It is possible to monitor the progress of the analysis functions using:
 
 ```
-fields @timestamp, @message
-| sort @timestamp desc
-| filter @message like /total_seen/
+pywren print_latest_logs | grep total_seen
 ```
 
-Make sure you choose the right lambda function from the drop-down!
+And the progress of the whole solution using:
+
+```
+pywren print_latest_logs | grep -v Running
+```
