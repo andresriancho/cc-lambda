@@ -91,4 +91,22 @@ The costs you'll incur by running this software are:
 
  * Lambda function
  * S3 storage
- * DynamoDB
+ 
+The highest cost will come from AWS lambda. In order to reduce this cost you
+should:
+
+ * Improve the lambda function code to run faster
+ * Improve the lambda function to use less RAM
+ * Search for `Max Memory Used` in the [cloudwatch logs for lambda](https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logs:)
+   and make sure the lambda function configuration is uses ~50mb more of RAM than the max memory used from the log.
+ 
+After running the tool a few times make sure you also run [lambda-cost-calculator](https://github.com/epsagon/lambda-cost-calculator):
+
+```console
++---------------------+-----------+--------------------------+-----------------------------+
+| Function            | Region    | Cost in the Last Day ($) | Monthly Cost Estimation ($) |
++---------------------+-----------+--------------------------+-----------------------------+
+| pywren_cc_search_v3 | us-east-1 | 6.410                    | 192.296                     |
++---------------------+-----------+--------------------------+-----------------------------+
+Total monthly cost estimation: $192.296
+```
