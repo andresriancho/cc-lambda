@@ -10,7 +10,7 @@ import datetime
 import base64
 import hashlib
 import zlib
-import codecs
+import s3fs
 import traceback
 
 import boto3
@@ -239,12 +239,8 @@ def process_warc_archive(warc_path):
     ignored_records = 0
     match_stats = dict()
 
-    s3 = boto3.client('s3')
-    obj = s3.get_object(Bucket='commoncrawl',
-                        Key='commoncrawl/%s' % warc_path)
-    body = obj['Body']
-
-    warc_file = codecs.getreader('utf-8')(body)
+    fs = s3fs.S3FileSystem(anon=True)
+    warc_file = fs.open('commoncrawl/%s' % warc_path, 'rb')
 
     for i, record in enumerate(ArchiveIterator(warc_file, arc2warc=True)):
         _should_process_record, data = should_process_record(record)
