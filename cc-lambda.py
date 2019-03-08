@@ -9,10 +9,10 @@ import datetime
 import base64
 import hashlib
 import zlib
+import codecs
 
 import boto3
 import pywren
-import s3fs
 import sentry_sdk
 import stackimpact
 
@@ -241,8 +241,12 @@ def process_warc_archive(warc_path):
     ignored_records = 0
     match_stats = dict()
 
-    fs = s3fs.S3FileSystem(anon=True)
-    warc_file = fs.open('commoncrawl/%s' % warc_path, 'rb')
+    s3 = boto3.client('s3')
+    obj = s3.get_object(Bucket='commoncrawl',
+                        Key='commoncrawl/%s' % warc_path)
+    body = obj['Body']
+
+    warc_file = codecs.getreader('utf-8')(body)
 
     for i, record in enumerate(ArchiveIterator(warc_file, arc2warc=True)):
         _should_process_record, data = should_process_record(record)
@@ -255,10 +259,28 @@ def process_warc_archive(warc_path):
         processed_records += 1
 
         if i % REPORT_STATUS_EVERY == 0:
-            print('Processed %s records from %s' % (i, warc_path))
+            report_status(i, start, processed_records, ignored_records, warc_path)
 
     spent = time.time() - start
     return warc_path, spent, processed_records, ignored_records, match_stats
+
+
+def report_status(num_records, start, processed_records, ignored_records, warc_path):
+    segment = get_segment_from_line(warc_path)
+
+    spent_time = time.time() - start
+    records_per_second = float(processed_records) / spent_time
+
+    data = {
+        'processed': processed_records,
+        'total_seen': num_records,
+        'ignored': ignored_records,
+        'segment': segment,
+        'processing_speed': records_per_second,
+    }
+
+    message = json.dumps(data)
+    print(message)
 
 
 def get_warc_paths():

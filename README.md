@@ -26,7 +26,7 @@ Edit the `~/.pywren_config` file and specify:
 
  * `aws_region` should be `us-east-1`
  * `bucket` should be unique bucket name
- * `memory` should be `1200`
+ * `memory` should be `512`
 
 ```bash
 pywren create_bucket
@@ -110,3 +110,17 @@ After running the tool a few times make sure you also run [lambda-cost-calculato
 +---------------------+-----------+--------------------------+-----------------------------+
 Total monthly cost estimation: $192.296
 ```
+
+## Monitoring
+
+It is possible to monitor the progress of the analysis process using the following
+[CloudWatch Insights](https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logs-insights:)
+search. 
+
+```
+fields @timestamp, @message
+| sort @timestamp desc
+| filter @message like /total_seen/
+```
+
+Make sure you choose the right lambda function from the drop-down!

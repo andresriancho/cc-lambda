@@ -4,7 +4,7 @@ s3fs
 warc
 warcio
 awscli
--e git://github.com/pywren/pywren.git#egg=pywren
+-e git://github.com/andresriancho/pywren.git#egg=pywren
 
 sentry_sdk
 stackimpact
