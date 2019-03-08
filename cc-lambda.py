@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import os
 import re
+import sys
 import logging
 import time
 import json
@@ -10,12 +11,15 @@ import base64
 import hashlib
 import zlib
 import codecs
+import traceback
 
 import boto3
 import pywren
 import sentry_sdk
 
 from warcio.archiveiterator import ArchiveIterator
+from pywren import wrenconfig
+from pywren.storage import storage
 
 MATCH_S3_BUCKET = 'common-crawl-aws-js-sdk'
 MATCH_S3_PATH = 'matches'
@@ -366,6 +370,19 @@ def handle_generic_failure(future, failed_warc_paths, exc):
         failed_warc_paths.add(future)
 
         print('A future failed with error: %s' % exc)
+        print('')
+
+        storage_config = wrenconfig.extract_storage_config(wrenconfig.default())
+        storage_handler = storage.Storage(storage_config)
+
+        call_status = storage_handler.get_call_status(future.callset_id, future.call_id)
+        exception_traceback = call_status.get('exception_traceback', None)
+
+        if exception_traceback is not None:
+            print(exception_traceback)
+        else:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            traceback.print_tb(exc_traceback)
 
 
 def main():
