@@ -24,7 +24,7 @@ MATCH_S3_PATH = 'matches'
 
 WARC_PATH_FILE = 'input/warc.paths'
 PROCESSED_WARC_PATHS = 'processed.paths'
-MAX_PATHS_PER_RUN = 1
+MAX_PATHS_PER_RUN = 250
 
 #
 # The search string order is important because after the first string matches
@@ -270,7 +270,8 @@ def is_already_processed_warc_path(warc_path):
 
 
 def record_processed_warc_path(warc_path):
-    file(PROCESSED_WARC_PATHS, 'a').write('%s\n' % warc_path)
+    if not is_already_processed_warc_path(warc_path):
+        file(PROCESSED_WARC_PATHS, 'a').write('%s\n' % warc_path)
 
 
 def handle_result(result):
@@ -287,7 +288,13 @@ def handle_result(result):
     print('')
 
 
+def handle_timeout(future):
+    print(dir(future))
+    print(future.__dict__)
+
+
 def main():
+    start = time.time()
     wren_exec = pywren.default_executor()
 
     all_warc_paths = get_warc_paths()
@@ -310,8 +317,20 @@ def main():
             print('Completed %s futures!' % len(completed_futures))
 
         for future in completed_futures:
-            result = future.result(storage_handler=wren_exec.storage)
-            handle_result(result)
+            try:
+                result = future.result(storage_handler=wren_exec.storage)
+            except Exception, e:
+                # This is ugly but they are raising Exception (not a subclass)
+                run_out_of_time = 'process ran out of time'
+                current_exception_msg = str(e)
+
+                if run_out_of_time in current_exception_msg:
+                    handle_timeout(future)
+            else:
+                handle_result(result)
+
+    spent = time.time() - start
+    print('Spent %.2f wall clock seconds' % spent)
 
 
 if __name__ == '__main__':

@@ -55,6 +55,20 @@ through those. Remove `processed.paths` if you want to re-process all WARC paths
 
 HTTP responses that match the search are stored in the `MATCH_S3_BUCKET` S3 bucket.
 
+```console
+$ python cc-lambda.py 
+No handlers could be found for logger "pywren.executor"
+Going to process 1 WARC paths
+Got futures from map(), waiting for results...
+Completed 1 futures!
+
+crawl-data/CC-MAIN-2019-09/segments/1550247479101.30/warc/CC-MAIN-20190215183319-20190215205319-00000.warc.gz
+  - Time (seconds): 191.205149174
+  - Processed pages: 44969
+  - Ignored pages: 93005
+  - Matches: {'aws_re_matcher': 9, 'cognito_matcher': 4}
+```
+
 ## Debugging
 
 Remember: [AWS Lambda sends logs to CloudWatch](https://docs.aws.amazon.com/lambda/latest/dg/python-logging.html)
