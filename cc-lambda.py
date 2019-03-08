@@ -10,14 +10,13 @@ import base64
 import hashlib
 import zlib
 
-import requests
 import boto3
 import pywren
+import s3fs
 import sentry_sdk
+import stackimpact
 
 from warcio.archiveiterator import ArchiveIterator
-
-sentry_sdk.init("https://1f99fe891d904df8b29db12358b72694@sentry.io/1409316")
 
 MATCH_S3_BUCKET = 'common-crawl-aws-js-sdk'
 MATCH_S3_PATH = 'matches'
@@ -25,7 +24,19 @@ MATCH_S3_PATH = 'matches'
 WARC_PATH_FILE = 'input/warc.paths'
 PROCESSED_WARC_PATHS = 'processed.paths'
 FAILED_WARC_PATHS = 'failed.paths'
-MAX_PATHS_PER_RUN = 250
+MAX_PATHS_PER_RUN = 1
+
+#
+# Applying regular expressions to all pages on the internet takes considerable
+# time, and in most cases it makes no sense when trying to identify a statistically
+# significant sample set
+#
+# Set MAX_PAGES_PER_DOMAIN to limit the number of pages we'll analyze for each
+# domain. The cache is kept in DynamoDB
+#
+MAX_PAGES_PER_DOMAIN = 100
+
+REPORT_STATUS_EVERY = 5000
 
 #
 # The search string order is important because after the first string matches
@@ -74,17 +85,6 @@ IGNORE_MIME_TYPES = {
 #   The last letter is always A or Q
 #
 AWS_KEY_RE = re.compile('(\'|")(ASIA|AKIA|AIDA|AROA)(J|I)[A-Z0-9]{14}(A|Q)(\'|")')
-
-#
-# Applying regular expressions to all pages on the internet takes considerable
-# time, and in most cases it makes no sense when trying to identify a statistically
-# significant sample set
-#
-# Set MAX_PAGES_PER_DOMAIN to limit the number of pages we'll analyze for each
-# domain. The cache is kept in DynamoDB
-#
-MAX_PAGES_PER_DOMAIN = 100
-
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -229,14 +229,22 @@ def md5_hash(data):
 
 
 def process_warc_archive(warc_path):
+    stackimpact.start(
+        agent_key='8e00251719de0656785d791d682b2ce13f29a7f1',
+        app_name='CommonCrawlerLambda'
+    )
+
+    sentry_sdk.init("https://1f99fe891d904df8b29db12358b72694@sentry.io/1409316")
+
     start = time.time()
     processed_records = 0
     ignored_records = 0
     match_stats = dict()
 
-    streaming_resp = requests.get('https://commoncrawl.s3.amazonaws.com/' + warc_path, stream=True)
+    fs = s3fs.S3FileSystem(anon=True)
+    warc_file = fs.open('commoncrawl/%s' % warc_path, 'rb')
 
-    for record in ArchiveIterator(streaming_resp.raw, arc2warc=True):
+    for i, record in enumerate(ArchiveIterator(warc_file, arc2warc=True)):
         _should_process_record, data = should_process_record(record)
         if not _should_process_record:
             ignored_records += 1
@@ -245,6 +253,9 @@ def process_warc_archive(warc_path):
         headers, body = data
         process_record(warc_path, record, headers, body, match_stats)
         processed_records += 1
+
+        if i % REPORT_STATUS_EVERY == 0:
+            print('Processed %s records from %s' % (i, warc_path))
 
     spent = time.time() - start
     return warc_path, spent, processed_records, ignored_records, match_stats
@@ -320,7 +331,7 @@ def handle_result(result, completed_warc_paths):
 
         print('')
         print(warc_path)
-        print('  - Time (seconds): %s' % spent)
+        print('  - Time (seconds): %.2f' % spent)
         print('  - Processed pages: %s' % processed_records)
         print('  - Ignored pages: %s' % ignored_records)
         print('  - Matches: %r' % match_stats)
@@ -330,22 +341,32 @@ def handle_result(result, completed_warc_paths):
 def handle_timeout(future, failed_warc_paths):
     if future not in failed_warc_paths:
         failed_warc_paths.add(future)
+
         print('A future timed out!')
+
+
+def handle_generic_failure(future, failed_warc_paths, exc):
+    if future not in failed_warc_paths:
+        failed_warc_paths.add(future)
+
+        print('A future failed with error: %s' % exc)
 
 
 def main():
     start = time.time()
-    wren_exec = pywren.default_executor()
+    wren_exec = pywren.default_executor(job_max_runtime=850)
 
     all_warc_paths = get_warc_paths()
     processed_warc_paths = get_processed_warc_paths()
     failed_warc_paths = get_failed_warc_paths()
 
     progress = float(len(processed_warc_paths) + len(failed_warc_paths)) / len(all_warc_paths)
+    print('')
     print('Overall progress: %.2f%%' % (progress * 100,))
+    print('')
 
-    pending_warc_paths = [wp for wp in all_warc_paths if not is_already_processed_warc_path(wp)]
-    pending_warc_paths = [wp for wp in pending_warc_paths if not is_failed_warc_path(wp)]
+    pending_warc_paths = [wp for wp in all_warc_paths if wp not in processed_warc_paths]
+    pending_warc_paths = [wp for wp in pending_warc_paths if wp not in failed_warc_paths]
     pending_warc_paths = pending_warc_paths[:MAX_PATHS_PER_RUN]
 
     completed_warc_paths = set()
@@ -361,7 +382,18 @@ def main():
     incomplete_futures = [1]
 
     while incomplete_futures:
-        completed_futures, incomplete_futures = pywren.wait(futures, return_when=pywren.ANY_COMPLETED)
+
+        try:
+            completed_futures, incomplete_futures = pywren.wait(futures, return_when=pywren.ANY_COMPLETED)
+        except Exception, e:
+            exception_message = str(e)
+            failed_to_connect_to_s3 = 'Could not connect to the endpoint URL'
+
+            if failed_to_connect_to_s3 in exception_message:
+                time.sleep(1)
+                continue
+
+            raise
 
         for future in completed_futures:
             try:
@@ -373,6 +405,8 @@ def main():
 
                 if run_out_of_time in current_exception_msg:
                     handle_timeout(future, failed_warc_paths)
+                else:
+                    handle_generic_failure(future, failed_warc_paths, e)
             else:
                 handle_result(result, completed_warc_paths)
 
@@ -386,6 +420,9 @@ def main():
 
     for failed_warc in failed_warc_paths:
         record_failed_warc_path(failed_warc)
+
+    if failed_warc_paths:
+        print('%s WARC files failed' % len(failed_warc_paths))
 
     spent = time.time() - start
     print('Spent %.2f wall clock seconds' % spent)

@@ -1,7 +1,10 @@
 boto3
 requests
+s3fs
 warc
 warcio
-sentry_sdk
 awscli
 -e git://github.com/pywren/pywren.git#egg=pywren
+
+sentry_sdk
+stackimpact
