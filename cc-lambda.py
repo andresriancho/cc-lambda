@@ -19,8 +19,12 @@ from warcio.archiveiterator import ArchiveIterator
 
 sentry_sdk.init("https://1f99fe891d904df8b29db12358b72694@sentry.io/1409316")
 
+MATCH_S3_BUCKET = 'common-crawl-aws-js-sdk'
+MATCH_S3_PATH = 'matches'
+
 WARC_PATH_FILE = 'input/warc.paths'
 PROCESSED_WARC_PATHS = 'processed.paths'
+MAX_PATHS_PER_RUN = 1
 
 #
 # The search string order is important because after the first string matches
@@ -57,9 +61,6 @@ IGNORE_MIME_TYPES = {
     'text/vtt',
     'text/x-component',
 }
-
-MATCH_S3_BUCKET = 'common-crawl-aws-js-sdk'
-MATCH_S3_PATH = 'matches'
 
 #
 # https://summitroute.com/blog/2018/06/20/aws_security_credential_formats/
@@ -107,11 +108,18 @@ def should_process_record(record):
     # We're only interested in the text HTTP responses, and we're not
     # interested in CSS files
     #
-    headers = record.http_headers.headers
+    # The get_header() does a case insensitive search
+    #
+    content_type = record.http_headers.get_header('content-type', default_value=None)
+
+    # There is no content-type in the response, ignore
+    if content_type is None:
+        return False, None
+
     should_process = False
 
     for mime_type in PROCESS_MIME_TYPES:
-        if mime_type in headers:
+        if mime_type in content_type:
             should_process = True
             break
 
@@ -124,24 +132,25 @@ def should_process_record(record):
 
         return False, None
 
-    return True, (headers, body)
+    return True, (record.http_headers, body)
 
 
 def process_record(warc_path, record, headers, body, match_stats):
     for matcher in [aws_re_matcher, cognito_matcher]:
         match_count = matcher(warc_path, record, headers, body)
 
-        if matcher.__name__ in match_stats:
-            match_stats[matcher.__name__] += match_count
-        else:
-            match_stats[matcher.__name__] = match_count
+        if match_count:
+            if matcher.__name__ in match_stats:
+                match_stats[matcher.__name__] += match_count
+            else:
+                match_stats[matcher.__name__] = match_count
 
 
 def aws_re_matcher(warc_path, record, headers, body):
     mo = AWS_KEY_RE.search(body)
 
     if mo is None:
-        return
+        return 0
 
     aws_access_key = mo.group(0)
     save_match_to_s3(warc_path, record, headers, body, aws_access_key)
@@ -154,17 +163,22 @@ def cognito_matcher(warc_path, record, headers, body):
             save_match_to_s3(warc_path, record, headers, body, search_string)
             return 1
 
+    return 0
+
 
 def save_match_to_s3(warc_path, record, headers, body, search_string):
     url = record.rec_headers.get_header('WARC-Target-URI')
     ip_address = record.rec_headers.get_header('WARC-IP-Address')
     date = record.rec_headers.get_header('WARC-Date')
 
+    # headers is an instance of StatusAndHeaders defined in statusandheaders.py
+    headers_str = headers.to_ascii_bytes()
+
     match = dict()
     match['search_string'] = search_string
     match['ip_address'] = ip_address
     match['date'] = date
-    match['headers'] = b64_encode(headers)
+    match['headers'] = b64_encode(headers_str)
     match['body'] = b64_encode(body)
     match['url'] = b64_encode(url)
 
@@ -264,6 +278,7 @@ def handle_result(result):
 
     record_processed_warc_path(warc_path)
 
+    print('')
     print(warc_path)
     print('  - Time (seconds): %s' % spent)
     print('  - Processed pages: %s' % processed_records)
@@ -277,14 +292,15 @@ def main():
 
     all_warc_paths = get_warc_paths()
     pending_warc_paths = [wp for wp in all_warc_paths if not is_already_processed_warc_path(wp)]
-    pending_warc_paths = pending_warc_paths[:1]
+    pending_warc_paths = pending_warc_paths[:MAX_PATHS_PER_RUN]
 
     print('Going to process %s WARC paths' % len(pending_warc_paths))
 
     futures = wren_exec.map(process_warc_archive, pending_warc_paths)
 
-    print('Got %s futures, waiting for results...' % len(futures))
+    print('Got futures from map(), waiting for results...')
 
+    # Force the first while loop run
     incomplete_futures = [1]
 
     while incomplete_futures:
@@ -292,8 +308,6 @@ def main():
 
         if completed_futures:
             print('Completed %s futures!' % len(completed_futures))
-        else:
-            print('Waiting...')
 
         for future in completed_futures:
             result = future.result(storage_handler=wren_exec.storage)
