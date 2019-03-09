@@ -12,6 +12,7 @@ import hashlib
 import zlib
 import s3fs
 import traceback
+import urlparse
 
 import boto3
 import pywren
@@ -27,7 +28,7 @@ MATCH_S3_PATH = 'matches'
 WARC_PATH_FILE = 'input/warc.paths'
 PROCESSED_WARC_PATHS = 'processed.paths'
 FAILED_WARC_PATHS = 'failed.paths'
-MAX_PATHS_PER_RUN = 1
+MAX_PATHS_PER_RUN = 250
 
 #
 # Applying regular expressions to all pages on the internet takes considerable
@@ -37,7 +38,8 @@ MAX_PATHS_PER_RUN = 1
 # Set MAX_PAGES_PER_DOMAIN to limit the number of pages we'll analyze for each
 # domain. The cache is kept in DynamoDB
 #
-MAX_PAGES_PER_DOMAIN = 100
+MAX_PAGES_PER_DOMAIN = 25
+PAGES_PER_DOMAIN = dict()
 
 REPORT_STATUS_EVERY = 5000
 
@@ -87,7 +89,7 @@ IGNORE_MIME_TYPES = {
 #   The 5th letter is always I or J
 #   The last letter is always A or Q
 #
-AWS_KEY_RE = re.compile('(\'|")(ASIA|AKIA|AIDA|AROA)(J|I)[A-Z0-9]{14}(A|Q)(\'|")')
+AWS_KEY_RE = re.compile('(\'A|"A)(SIA|KIA|IDA|ROA)(J|I)[A-Z0-9]{14}(A|Q)(\'|")')
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -121,6 +123,7 @@ def should_process_record(record):
         return False, None
 
     should_process = False
+    url = record.rec_headers.get_header('WARC-Target-URI')
 
     for mime_type in PROCESS_MIME_TYPES:
         if mime_type in content_type:
@@ -128,13 +131,35 @@ def should_process_record(record):
             break
 
     if not should_process:
-        url = record.rec_headers.get_header('WARC-Target-URI')
-
         msg = 'Ignored %s due to mime type filter'
         args = (url,)
         logger.info(msg % args)
 
         return False, None
+
+    #
+    # Count the number of pages processed for each domain and apply a MAX
+    #
+    # This filter is not perfect:
+    #
+    #   * The code is run in a lambda function, thus the PAGES_PER_DOMAIN
+    #     is not shared between invokes (not even when run in the same
+    #     container
+    #
+    #   * It is better than nothing, and considering that each WARC has ~150k
+    #     records which "should be clustered together for each site" it
+    #     makes sense to add it an hope for the best
+    #
+    # Initial tests show that this filter reduces the average lambda run
+    # time from 306 seconds to 296 seconds.
+    #
+    netloc = urlparse.urlparse(url).netloc
+    pages_for_domain = PAGES_PER_DOMAIN.get(netloc, 0)
+
+    if pages_for_domain > MAX_PAGES_PER_DOMAIN:
+        return False, None
+
+    PAGES_PER_DOMAIN[netloc] = pages_for_domain + 1
 
     return True, (record.http_headers, body)
 
