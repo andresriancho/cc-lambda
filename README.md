@@ -73,6 +73,13 @@ crawl-data/CC-MAIN-2019-09/segments/1550247479101.30/warc/CC-MAIN-20190215183319
   - Matches: {'aws_re_matcher': 9, 'cognito_matcher': 4}
 ```
 
+After running the application a few times, and fine-tuning your search, you can
+leave it running against all the common crawl dataset:
+
+```
+while python cc-lambda.py; do :; done
+```
+
 ## Debugging
 
 Remember: [AWS Lambda sends logs to CloudWatch](https://docs.aws.amazon.com/lambda/latest/dg/python-logging.html)
