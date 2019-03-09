@@ -51,14 +51,15 @@ REPORT_STATUS_EVERY = 5000
 # and the least specific below.
 #
 SEARCH_STRINGS = [
-    'IdentityPoolId',                   # a4ff6b9b40d16573a7dac372b601bd2c
-    'AWS.CognitoIdentityCredentials(',  # 2309dcd83538c36192b043d6f5ab8704
-    'AWS.WebIdentityCredentials(',      # ff3b6fda16006fd516c94f18ccdacd38
-    'assumeRoleWithWebIdentity',        # 946047774e119e9b4f38189d57b72c31
-    'sdk.amazonaws.com/js/aws-sdk',     # 723ef23b97462a594cd08bc6090130cd
-    'AWS.config.update',                # 3ce50e87de0c4e1a00fbb9fd29c0913e
-    "from 'aws-amplify';",              # be91c8d26b24ce9c0832cf483c3cb94f
-    "require('aws-sdk');",              # fae45b68fb137e5a4828df2bdb4a9d72
+    'IdentityPoolId',                                               # a4ff6b9b40d16573a7dac372b601bd2c
+    'AWS.CognitoIdentityCredentials(',                              # 2309dcd83538c36192b043d6f5ab8704
+    'AWS.WebIdentityCredentials(',                                  # ff3b6fda16006fd516c94f18ccdacd38
+    'assumeRoleWithWebIdentity',                                    # 946047774e119e9b4f38189d57b72c31
+    'sdk.amazonaws.com/js/aws-sdk',                                 # 723ef23b97462a594cd08bc6090130cd
+    'AWS.config.update',                                            # 3ce50e87de0c4e1a00fbb9fd29c0913e
+    "from 'aws-amplify';",                                          # be91c8d26b24ce9c0832cf483c3cb94f
+    "require('aws-sdk');",                                          # fae45b68fb137e5a4828df2bdb4a9d72
+    'License at https://sdk.amazonaws.com/js/BUNDLE_LICENSE.txt'    # bfac1fc57cae4a1bd7069ae3ef786b2e
 ]
 
 PROCESS_MIME_TYPES = {
@@ -89,7 +90,7 @@ IGNORE_MIME_TYPES = {
 #   The 5th letter is always I or J
 #   The last letter is always A or Q
 #
-AWS_KEY_RE = re.compile('(\'A|"A)(SIA|KIA|IDA|ROA)(J|I)[A-Z0-9]{14}(A|Q)(\'|")')
+AWS_KEY_RE = re.compile('(\'A|"A)(SIA|KIA|IDA|ROA)[JI][A-Z0-9]{14}[AQ][\'"]')
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -107,8 +108,6 @@ def should_process_record(record):
     #
     if record.rec_type != 'response':
         return False, None
-
-    body = record.content_stream().read()
 
     #
     # We're only interested in the text HTTP responses, and we're not
@@ -161,6 +160,7 @@ def should_process_record(record):
 
     PAGES_PER_DOMAIN[netloc] = pages_for_domain + 1
 
+    body = record.content_stream().read()
     return True, (record.http_headers, body)
 
 
