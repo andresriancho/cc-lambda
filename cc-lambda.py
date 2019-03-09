@@ -70,16 +70,6 @@ PROCESS_MIME_TYPES = {
     'application/ecmascript',
 }
 
-IGNORE_MIME_TYPES = {
-    'text/css',
-    'text/csv',
-    'text/calendar',
-    'text/cache-manifest',
-    'text/v-card',
-    'text/vtt',
-    'text/x-component',
-}
-
 #
 # https://summitroute.com/blog/2018/06/20/aws_security_credential_formats/
 #
@@ -274,7 +264,9 @@ def process_warc_archive(warc_path):
             continue
 
         headers, body = data
+
         process_record(warc_path, record, headers, body, match_stats)
+
         processed_records += 1
 
         if i % REPORT_STATUS_EVERY == 0:
