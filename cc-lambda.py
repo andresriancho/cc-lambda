@@ -415,6 +415,10 @@ def main():
     pending_warc_paths = [wp for wp in pending_warc_paths if wp not in failed_warc_paths]
     pending_warc_paths = pending_warc_paths[:MAX_PATHS_PER_RUN]
 
+    if not pending_warc_paths:
+        print('No more pending WARC paths')
+        sys.exit(0)
+
     completed_warc_paths = set()
     failed_warc_paths = set()
 
