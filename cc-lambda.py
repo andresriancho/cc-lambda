@@ -200,6 +200,7 @@ def save_match_to_s3(warc_path, record, headers, body, search_string):
     match['headers'] = b64_encode(headers_str)
     match['body'] = b64_encode(body)
     match['url'] = b64_encode(url)
+    match['warc_path'] = warc_path
 
     search_string_hash = md5_hash(search_string)
     payload_hash = md5_hash(body)
